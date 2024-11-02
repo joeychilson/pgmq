@@ -2,7 +2,7 @@
 
 A Go library for the [pgmq](https://github.com/tembo-io/pgmq) message queue extension for PostgreSQL.
 
-# Features
+## Features
 
 - All pgmq features
 - Type-safety
