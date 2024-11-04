@@ -254,39 +254,29 @@ func (q *Queue[T]) ReadBatch(ctx context.Context, maxMessages int, visibilityTim
 	return messages, rows.Err()
 }
 
-// ReadBatchWithPoll retrieves a single message with polling support.
+// ReadBatchWithPoll retrieves a batch of messages with polling support.
 // maxMessages is the maximum number of messages to read.
 // visibilityTimeout is the time to lock the messages in seconds.
 // pollTimeout is the maximum time to wait for a message in seconds.
 // pollInterval is the time to wait between polling attempts in milliseconds.
-func (q *Queue[T]) ReadBatchWithPoll(ctx context.Context, maxMessages int, visibilityTimeout, pollTimeout, pollInterval time.Duration) (*Message[T], error) {
-	var (
-		msg    Message[T]
-		rawMsg json.RawMessage
-	)
-
+func (q *Queue[T]) ReadBatchWithPoll(ctx context.Context, maxMessages int, visibilityTimeout, pollTimeout, pollInterval time.Duration) ([]*Message[T], error) {
 	query := "SELECT msg_id, read_ct, enqueued_at, vt, message FROM pgmq.read_with_poll($1, $2, $3, $4, $5);"
 
-	err := q.querier.
-		QueryRow(ctx, query, q.name, int(visibilityTimeout.Seconds()), maxMessages, int(pollTimeout.Seconds()), int(pollInterval.Milliseconds())).
-		Scan(
-			&msg.ID,
-			&msg.ReadCount,
-			&msg.EnqueuedAt,
-			&msg.VisibleAt,
-			&rawMsg,
-		)
-	if err == pgx.ErrNoRows {
-		return nil, nil
-	}
+	rows, err := q.querier.Query(ctx, query, q.name, int(visibilityTimeout.Seconds()), maxMessages, int(pollTimeout.Seconds()), int(pollInterval.Milliseconds()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read message with poll: %w", err)
+		return nil, fmt.Errorf("failed to read messages: %w", err)
 	}
+	defer rows.Close()
 
-	if err := json.Unmarshal(rawMsg, &msg.Message); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal message: %w", err)
+	var messages []*Message[T]
+	for rows.Next() {
+		var msg Message[T]
+		if err := rows.Scan(&msg.ID, &msg.ReadCount, &msg.EnqueuedAt, &msg.VisibleAt, &msg.Message); err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+		messages = append(messages, &msg)
 	}
-	return &msg, nil
+	return messages, rows.Err()
 }
 
 // SetVisibilityTimeout changes the visibility timeout of a message by its ID.
