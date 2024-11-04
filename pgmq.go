@@ -2,7 +2,6 @@ package pgmq
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -189,8 +188,8 @@ func (q *Queue[T]) Read(ctx context.Context, visibilityTimeout time.Duration) (*
 	err := q.querier.
 		QueryRow(ctx, query, q.name, int(visibilityTimeout.Seconds()), 1).
 		Scan(&msg.ID, &msg.ReadCount, &msg.EnqueuedAt, &msg.VisibleAt, &msg.Message)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("no messages available")
+	if err == pgx.ErrNoRows {
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to read message: %w", err)
@@ -219,7 +218,7 @@ func (q *Queue[T]) ReadWithPoll(ctx context.Context, visibilityTimeout, pollTime
 			&msg.VisibleAt,
 			&rawMsg,
 		)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
@@ -277,7 +276,7 @@ func (q *Queue[T]) ReadBatchWithPoll(ctx context.Context, maxMessages int, visib
 			&msg.VisibleAt,
 			&rawMsg,
 		)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
@@ -309,7 +308,7 @@ func (q *Queue[T]) SetVisibilityTimeout(ctx context.Context, msgID int64, timeou
 			&msg.VisibleAt,
 			&rawMsg,
 		)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return fmt.Errorf("message with ID %d not found", msgID)
 	}
 	if err != nil {
@@ -336,8 +335,8 @@ func (q *Queue[T]) Pop(ctx context.Context) (*Message[T], error) {
 			&msg.VisibleAt,
 			&rawMsg,
 		)
-	if err == sql.ErrNoRows {
-		return nil, nil
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("no messages available")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to pop message: %w", err)
